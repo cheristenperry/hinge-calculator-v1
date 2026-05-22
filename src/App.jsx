@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { Routes, Route, useParams, Link } from 'react-router-dom';
 import Calculator from './components/Calculator.jsx';
+import { useState, useCallback } from 'react';
+import LegalModal from './components/LegalModal.jsx';
 
 // ─────────────────────────────────────────────────────────────
 // SEO ROUTE CONFIG — maps URL segments to calculator defaults
@@ -106,41 +108,101 @@ function SEOCalculatorRoute() {
 // POPULAR CONFIGURATIONS FOOTER (crawler link farm)
 // ─────────────────────────────────────────────────────────────
 function PopularConfigurations() {
-  return (
-    <footer className="border-t border-cad-border mt-16 py-12 px-4 bg-cad-panel">
-      <div className="max-w-5xl mx-auto">
-        <h2 className="text-cad-muted text-xs font-mono uppercase tracking-widest mb-6">
-          Popular Hinge Configurations
-        </h2>
-        <nav aria-label="Popular hinge calculator configurations">
-          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-            {POPULAR_LINKS.map(({ to, label }) => (
-              <li key={to}>
-                <Link
-                  to={to}
-                  className="
-                    block text-xs text-cad-muted hover:text-cad-blue
-                    underline underline-offset-2 decoration-cad-border
-                    hover:decoration-cad-blue transition-colors duration-200
-                    py-1
-                  "
-                >
-                  {label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+  // ── Modal state ─────────────────────────────────────────────
+  // documentType: 'privacy' | 'terms' | null
+  const [modalDoc, setModalDoc] = useState(null);
 
-        <div className="mt-10 pt-6 border-t border-cad-border text-center text-cad-muted text-xs space-y-1">
-          <p>35mm Hinge Template Generator — Professional Cabinet Making Tool</p>
-          <p>© {new Date().getFullYear()} HingeCalc. All measurements in millimeters.</p>
-          <p className="text-cad-muted/50">
-            Always verify measurements with a test piece before production drilling.
-          </p>
+  const openModal  = useCallback((docType) => setModalDoc(docType), []);
+  const closeModal = useCallback(() => setModalDoc(null), []);
+
+  return (
+    <>
+      {/* ── Legal Modal (rendered at top so it layers above footer) */}
+      <LegalModal
+        isOpen={modalDoc !== null}
+        documentType={modalDoc}
+        onClose={closeModal}
+      />
+
+      <footer className="border-t border-cad-border mt-16 py-12 px-4 bg-cad-panel">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-cad-muted text-xs font-mono uppercase tracking-widest mb-6">
+            Popular Hinge Configurations
+          </h2>
+
+          <nav aria-label="Popular hinge calculator configurations">
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              {POPULAR_LINKS.map(({ to, label }) => (
+                <li key={to}>
+                  <Link
+                    to={to}
+                    className="
+                      block text-xs text-cad-muted hover:text-cad-blue
+                      underline underline-offset-2 decoration-cad-border
+                      hover:decoration-cad-blue transition-colors duration-200
+                      py-1
+                    "
+                  >
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          {/* ── Bottom bar with legal links ─────────────────── */}
+          <div className="
+            mt-10 pt-6 border-t border-cad-border
+            flex flex-col items-center gap-3
+            text-center text-cad-muted text-xs
+          ">
+            <p>35mm Hinge Template Generator — Professional Cabinet Making Tool</p>
+            <p>© {new Date().getFullYear()} HingeCalc. All measurements in millimeters.</p>
+            <p className="text-cad-muted/50">
+              Always verify measurements with a test piece before production drilling.
+            </p>
+
+            {/* Legal links row */}
+            <div className="
+              flex items-center gap-1 mt-1
+              text-cad-muted/50
+            ">
+              <button
+                onClick={() => openModal('privacy')}
+                className="
+                  text-xs font-mono
+                  text-cad-muted/60 hover:text-cad-blue
+                  underline underline-offset-2
+                  decoration-cad-border hover:decoration-cad-blue
+                  transition-colors duration-150
+                  focus:outline-none focus-visible:ring-1
+                  focus-visible:ring-cad-blue rounded-sm
+                "
+              >
+                Privacy Policy
+              </button>
+
+              <span className="text-cad-muted/30 mx-2 select-none">|</span>
+
+              <button
+                onClick={() => openModal('terms')}
+                className="
+                  text-xs font-mono
+                  text-cad-muted/60 hover:text-cad-blue
+                  underline underline-offset-2
+                  decoration-cad-border hover:decoration-cad-blue
+                  transition-colors duration-150
+                  focus:outline-none focus-visible:ring-1
+                  focus-visible:ring-cad-blue rounded-sm
+                "
+              >
+                Terms of Service
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-    </footer>
+      </footer>
+    </>
   );
 }
 
