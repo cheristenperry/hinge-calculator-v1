@@ -1,130 +1,525 @@
 import React, { useMemo } from 'react';
 
 // ─────────────────────────────────────────────────────────────
-// DIMENSION CONSTANTS (SVG viewport units ≈ mm scale)
+// VIEWPORT & LAYOUT
 // ─────────────────────────────────────────────────────────────
+const VP_WIDTH  = 400;
+const VP_HEIGHT = 340;
 
-// The SVG viewport represents the FACE of the door panel.
-// We show a cropped vertical section from one hinge side.
+const PANEL_LEFT         = 52;
+const PANEL_RIGHT_MARGIN = 70;
+const PANEL_WIDTH        = VP_WIDTH - PANEL_LEFT - PANEL_RIGHT_MARGIN;
 
-const VP_WIDTH  = 340;   // SVG viewport width  (px)
-const VP_HEIGHT = 420;   // SVG viewport height (px)
-
-// Door face representation (left edge = hinge side)
-const DOOR_LEFT   = 40;   // left margin (space for dimension lines)
-const DOOR_TOP    = 50;
-const DOOR_WIDTH  = 200;  // rendered door face width in SVG units
-const DOOR_HEIGHT = 320;  // rendered door face height
-
-// Scale factor: 1 CAD unit = 2.5 SVG px (so 35mm = 87.5px)
-const SCALE = 2.2;
+const CUP_CENTER_Y_SVG   = VP_HEIGHT / 2;
+const SCALE              = 2.8;
 
 // ─────────────────────────────────────────────────────────────
-// HELPER: Dashed dimension line with arrows and label
+// COLOUR PALETTE
 // ─────────────────────────────────────────────────────────────
-function DimLine({ x1, y1, x2, y2, label, orient = 'h', offset = 0, color = '#6b7a99' }) {
-  const mid = { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
+const C = {
+  blue:         '#00b4d8',
+  blueDim:      'rgba(0,180,216,0.50)',
+  blueFaint:    'rgba(0,180,216,0.07)',
+  orange:       '#f97316',
+  orangeDim:    'rgba(249,115,22,0.50)',
+  orangeFaint:  'rgba(249,115,22,0.07)',
+  green:        '#22d3ee',
+  greenDim:     'rgba(34,211,238,0.55)',
+  warn:         '#fbbf24',
+  danger:       '#f43f5e',
+  muted:        'rgba(107,122,153,0.85)',
+  mutedFaint:   'rgba(107,122,153,0.20)',
+  panelFill:    'rgba(15,21,32,0.90)',
+  bg:           '#0a0e14',
+  grid:         'rgba(0,180,216,0.040)',
+};
 
-  // Arrow head size
-  const AH = 4;
-  let arrow1, arrow2;
+// ─────────────────────────────────────────────────────────────
+// UTILITY COMPONENTS
+// ─────────────────────────────────────────────────────────────
+function CadText({
+  x, y, children,
+  anchor   = 'middle',
+  baseline = 'auto',
+  size     = 7.5,
+  fill     = C.muted,
+  bold     = false,
+  opacity  = 1,
+}) {
+  return (
+    <text
+      x={x} y={y}
+      textAnchor={anchor}
+      dominantBaseline={baseline}
+      fontSize={size}
+      fontFamily="JetBrains Mono, Fira Code, Consolas, monospace"
+      fontWeight={bold ? '600' : '400'}
+      fill={fill}
+      opacity={opacity}
+    >
+      {children}
+    </text>
+  );
+}
 
+function ArrowDim({ x1, y1, x2, y2, orient, color = C.muted }) {
+  const AH = 4.5;
+  let p1, p2;
   if (orient === 'h') {
-    arrow1 = `M${x1+AH},${y1-AH} L${x1},${y1} L${x1+AH},${y1+AH}`;
-    arrow2 = `M${x2-AH},${y2-AH} L${x2},${y2} L${x2-AH},${y2+AH}`;
+    p1 = `M${x1+AH},${y1-AH} L${x1},${y1} L${x1+AH},${y1+AH}`;
+    p2 = `M${x2-AH},${y2-AH} L${x2},${y2} L${x2-AH},${y2+AH}`;
   } else {
-    arrow1 = `M${x1-AH},${y1+AH} L${x1},${y1} L${x1+AH},${y1+AH}`;
-    arrow2 = `M${x2-AH},${y2-AH} L${x2},${y2} L${x2+AH},${y2-AH}`;
+    p1 = `M${x1-AH},${y1+AH} L${x1},${y1} L${x1+AH},${y1+AH}`;
+    p2 = `M${x2-AH},${y2-AH} L${x2},${y2} L${x2+AH},${y2-AH}`;
   }
-
   return (
     <g>
-      {/* Dimension leader line */}
       <line
         x1={x1} y1={y1} x2={x2} y2={y2}
-        stroke={color}
-        strokeWidth="0.6"
-        strokeDasharray="4 3"
-        opacity="0.7"
+        stroke={color} strokeWidth="0.75"
+        strokeDasharray="4 3" opacity="0.80"
       />
-      {/* Arrow heads */}
-      <path d={arrow1} stroke={color} strokeWidth="0.8" fill="none" opacity="0.8" />
-      <path d={arrow2} stroke={color} strokeWidth="0.8" fill="none" opacity="0.8" />
-      {/* Dimension text */}
-      <text
-        x={mid.x}
-        y={orient === 'h' ? mid.y - 6 : mid.y}
-        textAnchor="middle"
-        dominantBaseline={orient === 'v' ? 'middle' : 'auto'}
-        fontSize="7.5"
-        fontFamily="JetBrains Mono, monospace"
-        fill={color}
-        opacity="0.9"
-      >
-        {label}
-      </text>
+      <path d={p1} stroke={color} strokeWidth="1.0" fill="none" opacity="0.90" />
+      <path d={p2} stroke={color} strokeWidth="1.0" fill="none" opacity="0.90" />
     </g>
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// HELPER: Crosshair target marker (drill point indicator)
-// ─────────────────────────────────────────────────────────────
-function CrosshairMarker({ cx, cy, radius, color, pulseClass = '' }) {
+function Tick({ x, y, orient, color = C.muted, len = 5 }) {
+  const [dx, dy] = orient === 'h' ? [0, len] : [len, 0];
+  return (
+    <line
+      x1={x-dx} y1={y-dy} x2={x+dx} y2={y+dy}
+      stroke={color} strokeWidth="0.85" opacity="0.75"
+    />
+  );
+}
+
+function CupHole({ cx, cy, radius, severity }) {
+  const ringColor =
+    severity === 'critical' ? C.danger :
+    severity === 'warn'     ? C.warn   : C.blue;
   return (
     <g>
-      {/* Outer ring */}
-      <circle
-        cx={cx} cy={cy} r={radius + 4}
-        fill="none" stroke={color} strokeWidth="0.5" opacity="0.3"
-        className={pulseClass}
+      <circle cx={cx} cy={cy} r={radius + 7}
+        fill="none" stroke={ringColor}
+        strokeWidth="0.5" opacity="0.15"
+        className="cad-pulse"
       />
-      {/* Main circle */}
-      <circle
-        cx={cx} cy={cy} r={radius}
-        fill="none" stroke={color} strokeWidth="1"
+      <circle cx={cx} cy={cy} r={radius + 3}
+        fill="none" stroke={ringColor}
+        strokeWidth="0.4" opacity="0.20"
+      />
+      <circle cx={cx} cy={cy} r={radius}
+        fill={C.blueFaint}
+        stroke={ringColor} strokeWidth="1.4"
         filter="url(#glowBlue)"
       />
-      {/* Center dot */}
-      <circle cx={cx} cy={cy} r="1.5" fill={color} opacity="0.9" />
-      {/* Crosshair lines */}
       <line
-        x1={cx - radius - 8} y1={cy}
-        x2={cx + radius + 8} y2={cy}
-        stroke={color} strokeWidth="0.6" strokeDasharray="2 2" opacity="0.6"
+        x1={cx - radius - 12} y1={cy}
+        x2={cx + radius + 12} y2={cy}
+        stroke={ringColor} strokeWidth="0.6"
+        strokeDasharray="2.5 2.5" opacity="0.50"
       />
       <line
-        x1={cx} y1={cy - radius - 8}
-        x2={cx} y2={cy + radius + 8}
-        stroke={color} strokeWidth="0.6" strokeDasharray="2 2" opacity="0.6"
+        x1={cx} y1={cy - radius - 12}
+        x2={cx} y2={cy + radius + 12}
+        stroke={ringColor} strokeWidth="0.6"
+        strokeDasharray="2.5 2.5" opacity="0.50"
+      />
+      <circle cx={cx} cy={cy} r="2.0" fill={ringColor} opacity="0.95" />
+    </g>
+  );
+}
+
+function ScrewHole({ cx, cy }) {
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={9}
+        fill={C.orangeFaint}
+        stroke={C.orange} strokeWidth="1.0"
+        filter="url(#glowOrange)"
+      />
+      <circle cx={cx} cy={cy} r={3.5}
+        fill="none"
+        stroke={C.orange} strokeWidth="0.75" opacity="0.70"
+      />
+      <circle cx={cx} cy={cy} r="1.6" fill={C.orange} opacity="0.95" />
+      <line
+        x1={cx-2.2} y1={cy-2.2}
+        x2={cx+2.2} y2={cy+2.2}
+        stroke={C.orange} strokeWidth="1.0" opacity="0.75"
+      />
+    </g>
+  );
+}
+
+function LeaderLabel({ fromX, fromY, toX, toY, label, sublabel, color = C.blue }) {
+  const boxW = sublabel ? 48 : 40;
+  const boxH = sublabel ? 20 : 13;
+  const boxX = toX - 2;
+  const boxY = toY - boxH / 2;
+  return (
+    <g>
+      <circle cx={fromX} cy={fromY} r="1.6" fill={color} opacity="0.75" />
+      <line
+        x1={fromX} y1={fromY} x2={toX - 2} y2={toY}
+        stroke={color} strokeWidth="0.75" opacity="0.75"
+      />
+      <rect
+        x={boxX} y={boxY} width={boxW} height={boxH}
+        rx="2"
+        fill="rgba(10,14,20,0.85)"
+        stroke={color} strokeWidth="0.5" opacity="0.6"
+      />
+      <CadText
+        x={boxX + boxW/2}
+        y={sublabel ? boxY + 7 : boxY + boxH/2 + 1}
+        size={7.5} fill={color} bold
+      >
+        {label}
+      </CadText>
+      {sublabel && (
+        <CadText x={boxX + boxW/2} y={boxY + 15} size={6} fill={color} opacity={0.7}>
+          {sublabel}
+        </CadText>
+      )}
+    </g>
+  );
+}
+
+function ScaleBar({ x, y, scale }) {
+  const barPx = 10 * scale;
+  return (
+    <g>
+      <line x1={x} y1={y} x2={x + barPx} y2={y}
+        stroke={C.blueDim} strokeWidth="1.2" opacity="0.65" />
+      <line x1={x}       y1={y-3} x2={x}       y2={y+3}
+        stroke={C.blueDim} strokeWidth="0.9" opacity="0.65" />
+      <line x1={x+barPx} y1={y-3} x2={x+barPx} y2={y+3}
+        stroke={C.blueDim} strokeWidth="0.9" opacity="0.65" />
+      <CadText x={x + barPx/2} y={y - 6} size={6.5} fill={C.blueDim} opacity={0.75}>
+        10mm
+      </CadText>
+    </g>
+  );
+}
+
+function LegendItem({ color, label, dashed = false }) {
+  return (
+    <span
+      className="flex items-center gap-1.5 text-[10px] font-mono opacity-70"
+      style={{ color }}
+    >
+      <span
+        className="inline-block w-4"
+        style={{
+          height: '1px',
+          background: dashed ? 'none' : color,
+          borderTop: dashed ? `1px dashed ${color}` : 'none',
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function BreakLine({ y, panelLeft, panelRight }) {
+  const width = panelRight - panelLeft;
+  const amp   = 4;
+  const segs  = 12;
+  const segW  = width / segs;
+  let d = `M ${panelLeft} ${y}`;
+  for (let i = 0; i < segs; i++) {
+    const x    = panelLeft + i * segW + segW / 2;
+    const sign = i % 2 === 0 ? -1 : 1;
+    d += ` L ${x} ${y + sign * amp}`;
+  }
+  d += ` L ${panelRight} ${y}`;
+  return (
+    <g opacity="0.55">
+      <path d={d} fill="none"
+        stroke="rgba(0,180,216,0.50)" strokeWidth="1.0" strokeLinejoin="round" />
+      <CadText x={panelLeft - 4} y={y} anchor="end" baseline="middle" size={5.5}
+        fill="rgba(0,180,216,0.35)">
+        ~ ~ ~
+      </CadText>
+    </g>
+  );
+}
+
+function ThicknessCallout({ x, y, thickness }) {
+  const w = Math.max(12, thickness * 0.85);
+  const h = 38;
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h}
+        fill="url(#woodHatch)"
+        stroke={C.blueDim} strokeWidth="0.7" opacity="0.85"
+      />
+      <line x1={x-4} y1={y}   x2={x}   y2={y}   stroke={C.blueDim} strokeWidth="0.6" />
+      <line x1={x-4} y1={y+h} x2={x}   y2={y+h} stroke={C.blueDim} strokeWidth="0.6" />
+      <line x1={x-4} y1={y}   x2={x-4} y2={y+h} stroke={C.blueDim} strokeWidth="0.6" />
+      <CadText x={x + w/2} y={y + h + 9}  size={7}   fill={C.blue} bold>
+        {thickness}mm
+      </CadText>
+      <CadText x={x + w/2} y={y + h + 17} size={5.5} fill={C.blueDim}>
+        thickness
+      </CadText>
+    </g>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// CABINET FACE REFERENCE LINE
+//
+// This vertical dashed line shows where the cabinet face frame
+// sits relative to the door's hinge edge. It shifts left/right
+// reactively when overlayType changes:
+//
+//   Full overlay  → cabinetFaceX is small  (close to hinge edge)
+//   Half overlay  → cabinetFaceX is medium
+//   Inset         → cabinetFaceX is large (or even past cup center)
+//
+// The line is drawn INSIDE the door panel, labeled "CABINET FACE".
+// A fill band between the hinge edge and this line shows the
+// overlay/inset zone in the overlay's accent color.
+// ─────────────────────────────────────────────────────────────
+function CabinetFaceLine({ cabinetFaceXsvg, panelLeft, overlayType, overlayAmount }) {
+  // Color and label vary by overlay type
+  const config = {
+    full:  { color: C.green,  label: 'CABINET FACE',  sublabel: `+${overlayAmount}mm overlay` },
+    half:  { color: C.green,  label: 'CABINET FACE',  sublabel: `+${overlayAmount}mm overlay` },
+    inset: { color: C.warn,   label: 'CABINET FACE',  sublabel: `${overlayAmount}mm (inset)`  },
+  };
+  const { color, label, sublabel } = config[overlayType] ?? config.full;
+
+  // Clamp so the line stays inside the visible panel
+  const clampedX = Math.max(panelLeft + 4, cabinetFaceXsvg);
+
+  // Fill band from hinge edge to cabinet face line
+  const bandColor = overlayType === 'inset'
+    ? 'rgba(251,191,36,0.05)'
+    : 'rgba(34,211,238,0.05)';
+
+  return (
+    <g>
+      {/* Shaded overlay/inset zone */}
+      <rect
+        x={panelLeft}
+        y={0}
+        width={Math.max(0, clampedX - panelLeft)}
+        height={VP_HEIGHT}
+        fill={bandColor}
+      />
+
+      {/* Cabinet face reference line — dashed, full panel height */}
+      <line
+        x1={clampedX} y1={0}
+        x2={clampedX} y2={VP_HEIGHT}
+        stroke={color}
+        strokeWidth="1.0"
+        strokeDasharray="6 4"
+        opacity="0.65"
+      />
+
+      {/* Top label */}
+      <rect
+        x={clampedX + 3} y={40}
+        width={54} height={18}
+        rx="2"
+        fill="rgba(10,14,20,0.80)"
+        stroke={color} strokeWidth="0.5" opacity="0.55"
+      />
+      <CadText
+        x={clampedX + 30} y={47}
+        anchor="middle" baseline="middle"
+        size={6.5} fill={color} bold opacity={0.9}
+      >
+        {label}
+      </CadText>
+      <CadText
+        x={clampedX + 30} y={55}
+        anchor="middle" baseline="middle"
+        size={5.5} fill={color} opacity={0.65}
+      >
+        {sublabel}
+      </CadText>
+
+      {/* Small triangle marker pointing left at the line */}
+      <path
+        d={`M${clampedX-1},${VP_HEIGHT/2 - 5} L${clampedX+6},${VP_HEIGHT/2} L${clampedX-1},${VP_HEIGHT/2 + 5}`}
+        fill={color} opacity="0.60"
       />
     </g>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// HELPER: Small screw hole marker
+// SCREW COORDINATE LABELS
+//
+// Rendered next to each screw hole to show its coordinates.
+// Format: "(X, ±Y)" relative to cup center.
+// These labels match exactly what is shown in the data table.
 // ─────────────────────────────────────────────────────────────
-function ScrewHole({ cx, cy, color = '#f97316' }) {
+function ScrewCoordLabel({ cx, cy, screwX, yOffset, isTop }) {
+  // Label box sits to the RIGHT of the screw hole
+  const labelX = cx + 14;
+  const labelY = cy;
+  const sign   = isTop ? '−' : '+';
+  const absY   = Math.abs(yOffset).toFixed(1);
+
   return (
     <g>
-      {/* Outer ring */}
-      <circle
-        cx={cx} cy={cy} r={6}
-        fill="rgba(249,115,22,0.07)"
-        stroke={color} strokeWidth="0.8"
-        filter="url(#glowOrange)"
-      />
-      {/* Inner ring */}
-      <circle cx={cx} cy={cy} r="2.5" fill="none" stroke={color} strokeWidth="0.7" opacity="0.7" />
-      {/* Center */}
-      <circle cx={cx} cy={cy} r="1" fill={color} opacity="0.8" />
-      {/* Diagonal slots (screw head indicator) */}
+      {/* Horizontal tick from screw to label */}
       <line
-        x1={cx - 1.5} y1={cy - 1.5}
-        x2={cx + 1.5} y2={cy + 1.5}
-        stroke={color} strokeWidth="0.7" opacity="0.7"
+        x1={cx + 9} y1={cy}
+        x2={labelX}  y2={cy}
+        stroke={C.orangeDim} strokeWidth="0.6" opacity="0.7"
       />
+      {/* Coordinate text — two lines */}
+      <CadText
+        x={labelX + 2} y={cy - 4}
+        anchor="start" baseline="middle"
+        size={6.5} fill={C.orange} bold opacity={0.90}
+      >
+        X={screwX.toFixed(1)}mm
+      </CadText>
+      <CadText
+        x={labelX + 2} y={cy + 5}
+        anchor="start" baseline="middle"
+        size={6.0} fill={C.orangeDim} opacity={0.80}
+      >
+        {sign}{absY}mm from ℄
+      </CadText>
+    </g>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DIMENSION ANNOTATIONS
+// ─────────────────────────────────────────────────────────────
+function DimAnnotations({
+  panelLeftSvg,
+  cupXsvg,
+  screwXsvg,
+  screwTopYsvg,
+  screwBotYsvg,
+  cupCenterX,
+  screwOffsetX,
+  holeSpacing,
+  dimHRow1Y,
+  dimHRow2Y,
+  dimVX,
+}) {
+  return (
+    <g>
+      {/* ── DIM A: cupCenterX (horizontal, blue) ─────────── */}
+      <line
+        x1={panelLeftSvg} y1={VP_HEIGHT - 50}
+        x2={panelLeftSvg} y2={dimHRow1Y}
+        stroke={C.blueDim} strokeWidth="0.55"
+        strokeDasharray="3 3" opacity="0.60"
+      />
+      <line
+        x1={cupXsvg} y1={VP_HEIGHT - 50}
+        x2={cupXsvg} y2={dimHRow1Y}
+        stroke={C.blueDim} strokeWidth="0.55"
+        strokeDasharray="3 3" opacity="0.60"
+      />
+      <ArrowDim
+        x1={panelLeftSvg} y1={dimHRow1Y}
+        x2={cupXsvg}      y2={dimHRow1Y}
+        orient="h" color={C.blue}
+      />
+      <Tick x={panelLeftSvg} y={dimHRow1Y} orient="h" color={C.blue} />
+      <Tick x={cupXsvg}      y={dimHRow1Y} orient="h" color={C.blue} />
+      <CadText
+        x={(panelLeftSvg + cupXsvg) / 2}
+        y={dimHRow1Y - 7}
+        size={8} fill={C.blue} bold
+      >
+        {cupCenterX.toFixed(1)}mm
+      </CadText>
+      <CadText
+        x={(panelLeftSvg + cupXsvg) / 2}
+        y={dimHRow1Y + 8}
+        size={6} fill={C.blueDim}
+      >
+        cup center (X)
+      </CadText>
+
+      {/* ── DIM B: screwOffsetX (horizontal, orange) ─────── */}
+      <line
+        x1={cupXsvg}   y1={VP_HEIGHT - 50}
+        x2={cupXsvg}   y2={dimHRow2Y}
+        stroke={C.orangeDim} strokeWidth="0.55"
+        strokeDasharray="3 3" opacity="0.60"
+      />
+      <line
+        x1={screwXsvg} y1={VP_HEIGHT - 50}
+        x2={screwXsvg} y2={dimHRow2Y}
+        stroke={C.orangeDim} strokeWidth="0.55"
+        strokeDasharray="3 3" opacity="0.60"
+      />
+      <ArrowDim
+        x1={cupXsvg}   y1={dimHRow2Y}
+        x2={screwXsvg} y2={dimHRow2Y}
+        orient="h" color={C.orange}
+      />
+      <Tick x={cupXsvg}   y={dimHRow2Y} orient="h" color={C.orange} />
+      <Tick x={screwXsvg} y={dimHRow2Y} orient="h" color={C.orange} />
+      <CadText
+        x={(cupXsvg + screwXsvg) / 2}
+        y={dimHRow2Y - 7}
+        size={8} fill={C.orange} bold
+      >
+        {screwOffsetX.toFixed(1)}mm
+      </CadText>
+      <CadText
+        x={(cupXsvg + screwXsvg) / 2}
+        y={dimHRow2Y + 8}
+        size={6} fill={C.orangeDim}
+      >
+        screw offset (X)
+      </CadText>
+
+      {/* ── DIM C: holeSpacing (vertical, orange) ────────── */}
+      <line
+        x1={screwXsvg + 11} y1={screwTopYsvg}
+        x2={dimVX}          y2={screwTopYsvg}
+        stroke={C.orangeDim} strokeWidth="0.55"
+        strokeDasharray="3 3" opacity="0.60"
+      />
+      <line
+        x1={screwXsvg + 11} y1={screwBotYsvg}
+        x2={dimVX}          y2={screwBotYsvg}
+        stroke={C.orangeDim} strokeWidth="0.55"
+        strokeDasharray="3 3" opacity="0.60"
+      />
+      <ArrowDim
+        x1={dimVX} y1={screwTopYsvg}
+        x2={dimVX} y2={screwBotYsvg}
+        orient="v" color={C.orange}
+      />
+      <Tick x={dimVX} y={screwTopYsvg} orient="v" color={C.orange} />
+      <Tick x={dimVX} y={screwBotYsvg} orient="v" color={C.orange} />
+      <CadText
+        x={dimVX + 6}
+        y={(screwTopYsvg + screwBotYsvg) / 2 - 6}
+        anchor="start" baseline="middle"
+        size={8} fill={C.orange} bold
+      >
+        {holeSpacing}mm
+      </CadText>
+      <CadText
+        x={dimVX + 6}
+        y={(screwTopYsvg + screwBotYsvg) / 2 + 6}
+        anchor="start" baseline="middle"
+        size={6} fill={C.orangeDim}
+      >
+        screw spacing (Y)
+      </CadText>
     </g>
   );
 }
@@ -135,396 +530,359 @@ function ScrewHole({ cx, cy, color = '#f97316' }) {
 export default function Blueprint({ measurements }) {
   const {
     cupCenterX,
-    screwLeftX,
-    screwRightX,
-    screwOffsetY,
+    screwX,
+    screwTopYOffset,
+    screwBottomYOffset,
     cupDiameter,
+    holeSpacing,
+    screwOffsetX,
     brandSpec,
     doorThickness,
     severity,
-    topHingeY,
-    bottomOffset,
+    overlayType,
+    overlayAmount,
+    cabinetFaceX,
   } = measurements;
 
-  // ── Map real-world mm to SVG coords ───────────────────────
-  // Origin (0,0) = top-left corner of door FACE
-  // X_svg = DOOR_LEFT + (real_X_mm * SCALE)
-  // Y_svg = DOOR_TOP + hinge_y_position_in_svg
+  // ── SVG coordinate helpers ──────────────────────────────────
+  const toSvgX = (mm) => PANEL_LEFT + mm * SCALE;
+  const toSvgY = (offsetMm) => CUP_CENTER_Y_SVG + offsetMm * SCALE;
 
-  const svgCupX  = DOOR_LEFT + cupCenterX * SCALE;
-  const cupR     = (cupDiameter / 2) * SCALE;
+  // ── Key SVG coordinates ─────────────────────────────────────
+  const cupXsvg          = toSvgX(cupCenterX);
+  const cupYsvg          = CUP_CENTER_Y_SVG;
+  const screwXsvg        = toSvgX(screwX);
+  const screwTopYsvg     = toSvgY(screwTopYOffset);
+  const screwBotYsvg     = toSvgY(screwBottomYOffset);
+  const cupRadius        = (cupDiameter / 2) * SCALE;
+  const panelRightSvg    = PANEL_LEFT + PANEL_WIDTH;
 
-  // Two hinge instances: top and bottom
-  const hingeInstances = [
-    { id: 'top',    ySvg: DOOR_TOP + 80,  label: `Y = ${topHingeY}mm` },
-    { id: 'bottom', ySvg: DOOR_TOP + 240, label: `Y = 100mm from bottom` },
-  ];
+  // Cabinet face reference line — reactive to overlayType
+  const cabinetFaceXsvg  = toSvgX(cabinetFaceX);
 
-  // Screw hole X positions in SVG
-  const svgScrewLeftX  = DOOR_LEFT + screwLeftX  * SCALE;
-  const svgScrewRightX = DOOR_LEFT + screwRightX * SCALE;
+  // ── Severity-based door outline color ──────────────────────
+  const doorStrokeColor =
+    severity === 'critical' ? C.danger :
+    severity === 'warn'     ? C.warn   : C.blue;
 
-  // Screw vertical offset from cup center
-  const svgScrewOffsetY = screwOffsetY * SCALE;
+  // ── Dimension line positions ────────────────────────────────
+  const DIM_H_ROW1_Y = VP_HEIGHT - 30;
+  const DIM_H_ROW2_Y = VP_HEIGHT - 14;
+  const DIM_V_X      = panelRightSvg + 22;
 
-  // Door face dimensions — clamp to avoid overflow
-  const svgDoorFaceWidth = Math.min(DOOR_WIDTH, VP_WIDTH - DOOR_LEFT - 20);
-
-  // Warning color for door outline
-  const outlineColor = severity === 'critical'
-    ? '#f43f5e'
-    : severity === 'warn'
-    ? '#fbbf24'
-    : '#00b4d8';
-
-  // ── Grid lines (CAD appearance) ────────────────────────────
+  // ── Grid lines ──────────────────────────────────────────────
   const gridLines = useMemo(() => {
     const lines = [];
-    const step = 20;
-    for (let x = DOOR_LEFT; x <= DOOR_LEFT + DOOR_WIDTH; x += step) {
-      lines.push({ x1: x, y1: DOOR_TOP, x2: x, y2: DOOR_TOP + DOOR_HEIGHT, axis: 'v' });
+    const step  = 20;
+    for (let x = PANEL_LEFT; x <= PANEL_LEFT + PANEL_WIDTH; x += step) {
+      lines.push({ x1: x, y1: 0, x2: x, y2: VP_HEIGHT, key: `v${x}` });
     }
-    for (let y = DOOR_TOP; y <= DOOR_TOP + DOOR_HEIGHT; y += step) {
-      lines.push({ x1: DOOR_LEFT, y1: y, x2: DOOR_LEFT + DOOR_WIDTH, y2: y, axis: 'h' });
+    for (let y = 0; y <= VP_HEIGHT; y += step) {
+      lines.push({ x1: PANEL_LEFT, y1: y, x2: PANEL_LEFT + PANEL_WIDTH, y2: y, key: `h${y}` });
     }
     return lines;
   }, []);
 
   return (
-    <div className="
-      rounded-xl border border-cad-border bg-cad-bg overflow-hidden
-      shadow-[inset_0_0_40px_rgba(0,180,216,0.03)]
-    ">
-      {/* Header bar */}
+    <div className="rounded-xl border border-cad-border bg-cad-bg overflow-hidden shadow-[inset_0_0_40px_rgba(0,180,216,0.03)]">
+
+      {/* ── Header bar ───────────────────────────────────────── */}
       <div className="
-        flex items-center justify-between px-4 py-2
-        border-b border-cad-border bg-cad-panel/60
+        flex items-center justify-between
+        px-4 py-2 border-b border-cad-border bg-cad-panel/60
       ">
         <span className="text-cad-muted font-mono text-[10px] uppercase tracking-widest">
-          Blueprint — Door Face (35mm Hinge Template)
+          Detail View — Single Hinge Template
         </span>
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5 text-[10px] font-mono text-cad-blue opacity-70">
-            <span className="w-3 h-0.5 bg-cad-blue inline-block" />
-            Cup Hole
-          </span>
-          <span className="flex items-center gap-1.5 text-[10px] font-mono text-cad-orange opacity-70">
-            <span className="w-3 h-0.5 bg-cad-orange inline-block" />
-            Screw Holes
-          </span>
-          <span className="flex items-center gap-1.5 text-[10px] font-mono text-cad-muted opacity-70">
-            <span className="w-3 h-0.5 bg-cad-muted inline-block border-dashed border-t border-cad-muted" />
-            Dimensions
-          </span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <LegendItem color={C.blue}   label="Cup (35mm)"     />
+          <LegendItem color={C.orange} label="Screws (4mm)"   />
+          <LegendItem color={C.green}  label="Cabinet Face" dashed />
+          <LegendItem color={C.muted}  label="Dims"         dashed />
         </div>
       </div>
 
-      {/* SVG Canvas */}
+      {/* ── SVG Canvas ───────────────────────────────────────── */}
       <svg
         viewBox={`0 0 ${VP_WIDTH} ${VP_HEIGHT}`}
         className="w-full"
-        style={{ maxHeight: '480px', background: '#0a0e14' }}
+        style={{ maxHeight: '400px', background: C.bg }}
         role="img"
-        aria-label="CAD blueprint showing 35mm hinge drilling template with cup hole and mounting screw positions"
+        aria-label={
+          `35mm hinge detail view. ${brandSpec.label}. ` +
+          `Cup center at ${cupCenterX.toFixed(1)}mm from hinge edge. ` +
+          `Screw column at ${screwX.toFixed(1)}mm. ` +
+          `Screw spacing ${holeSpacing}mm vertical. ` +
+          `Overlay type: ${overlayType}.`
+        }
       >
         <defs>
-          {/* Glow filters */}
-          <filter id="glowBlue" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+          <filter id="glowBlue" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b" />
             <feMerge>
-              <feMergeNode in="blur" />
+              <feMergeNode in="b" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          <filter id="glowOrange" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
+          <filter id="glowOrange" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="b" />
             <feMerge>
-              <feMergeNode in="blur" />
+              <feMergeNode in="b" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
           <filter id="glowWarn" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b" />
             <feMerge>
-              <feMergeNode in="blur" />
+              <feMergeNode in="b" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
-          {/* Grid pattern */}
-          <pattern id="cadGrid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path
-              d="M 20 0 L 0 0 0 20"
-              fill="none" stroke="rgba(0,180,216,0.06)" strokeWidth="0.5"
+
+          {/* Vertical fade — panel fades at top & bottom */}
+          <linearGradient id="panelFadeV" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={C.panelFill} stopOpacity="0"   />
+            <stop offset="12%"  stopColor={C.panelFill} stopOpacity="0.7" />
+            <stop offset="25%"  stopColor={C.panelFill} stopOpacity="1"   />
+            <stop offset="75%"  stopColor={C.panelFill} stopOpacity="1"   />
+            <stop offset="88%"  stopColor={C.panelFill} stopOpacity="0.7" />
+            <stop offset="100%" stopColor={C.panelFill} stopOpacity="0"   />
+          </linearGradient>
+
+          {/* Mask for grid fade */}
+          <linearGradient id="gridFadeV" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopOpacity="0" stopColor="white" />
+            <stop offset="18%"  stopOpacity="1" stopColor="white" />
+            <stop offset="82%"  stopOpacity="1" stopColor="white" />
+            <stop offset="100%" stopOpacity="0" stopColor="white" />
+          </linearGradient>
+          <mask id="gridFadeMask">
+            <rect
+              x={PANEL_LEFT} y={0}
+              width={PANEL_WIDTH} height={VP_HEIGHT}
+              fill="url(#gridFadeV)"
             />
-          </pattern>
-          {/* Hatch pattern for door thickness cross-section */}
-          <pattern id="woodHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <line x1="0" y1="0" x2="0" y2="5" stroke="rgba(0,180,216,0.12)" strokeWidth="0.7" />
+          </mask>
+
+          {/* Door stroke gradient */}
+          <linearGradient id="strokeFadeV" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor={doorStrokeColor} stopOpacity="0"   />
+            <stop offset="14%"  stopColor={doorStrokeColor} stopOpacity="0.8" />
+            <stop offset="28%"  stopColor={doorStrokeColor} stopOpacity="1"   />
+            <stop offset="72%"  stopColor={doorStrokeColor} stopOpacity="1"   />
+            <stop offset="86%"  stopColor={doorStrokeColor} stopOpacity="0.8" />
+            <stop offset="100%" stopColor={doorStrokeColor} stopOpacity="0"   />
+          </linearGradient>
+
+          {/* Wood hatch for thickness callout */}
+          <pattern
+            id="woodHatch" width="5" height="5"
+            patternUnits="userSpaceOnUse" patternTransform="rotate(45)"
+          >
+            <line x1="0" y1="0" x2="0" y2="5"
+              stroke="rgba(0,180,216,0.20)" strokeWidth="0.9" />
           </pattern>
         </defs>
 
-        {/* ── Background grid ──────────────────────────────── */}
-        <rect width={VP_WIDTH} height={VP_HEIGHT} fill="url(#cadGrid)" />
+        {/* ════════════════════════════════════════════════════
+            LAYER 0 — Cabinet face reference line
+            Rendered FIRST so all geometry appears on top of it
+        ═══════════════════════════════════════════════════════ */}
+        <CabinetFaceLine
+          cabinetFaceXsvg={cabinetFaceXsvg}
+          panelLeft={PANEL_LEFT}
+          overlayType={overlayType}
+          overlayAmount={overlayAmount}
+        />
 
-        {/* ── Origin crosshair (top-left of door) ─────────── */}
-        <circle cx={DOOR_LEFT} cy={DOOR_TOP} r="2" fill="rgba(0,180,216,0.4)" />
+        {/* ════════════════════════════════════════════════════
+            LAYER 1 — Door stile panel body
+        ═══════════════════════════════════════════════════════ */}
 
-        {/* ── Door FACE rectangle ──────────────────────────── */}
+        {/* Panel fill with vertical fade */}
         <rect
-          x={DOOR_LEFT}
-          y={DOOR_TOP}
-          width={svgDoorFaceWidth}
-          height={DOOR_HEIGHT}
-          fill="rgba(15,21,32,0.8)"
-          stroke={outlineColor}
-          strokeWidth="1.5"
+          x={PANEL_LEFT} y={0}
+          width={PANEL_WIDTH} height={VP_HEIGHT}
+          fill="url(#panelFadeV)"
+        />
+
+        {/* CAD grid */}
+        <g mask="url(#gridFadeMask)">
+          {gridLines.map((l) => (
+            <line
+              key={l.key}
+              x1={l.x1} y1={l.y1}
+              x2={Math.min(l.x2, PANEL_LEFT + PANEL_WIDTH)}
+              y2={l.y2}
+              stroke={C.grid} strokeWidth="0.5"
+            />
+          ))}
+        </g>
+
+        {/* Left border — hinge side edge */}
+        <line
+          x1={PANEL_LEFT} y1={0}
+          x2={PANEL_LEFT} y2={VP_HEIGHT}
+          stroke="url(#strokeFadeV)" strokeWidth="1.8"
           filter={severity !== 'ok' ? 'url(#glowWarn)' : 'url(#glowBlue)'}
         />
 
-        {/* Grid inside door face */}
-        {gridLines.map((l, i) => (
-          <line
-            key={i}
-            x1={l.x1} y1={l.y1}
-            x2={Math.min(l.x2, DOOR_LEFT + svgDoorFaceWidth)}
-            y2={Math.min(l.y2, DOOR_TOP + DOOR_HEIGHT)}
-            stroke="rgba(0,180,216,0.04)"
-            strokeWidth="0.5"
-          />
-        ))}
+        {/* Right border */}
+        <line
+          x1={panelRightSvg} y1={0}
+          x2={panelRightSvg} y2={VP_HEIGHT}
+          stroke="url(#strokeFadeV)" strokeWidth="1.0" opacity="0.5"
+        />
 
-        {/* ── Door edge label ──────────────────────────────── */}
+        {/* Break lines — "infinite material" indicator */}
+        <BreakLine y={32}               panelLeft={PANEL_LEFT} panelRight={panelRightSvg} />
+        <BreakLine y={VP_HEIGHT - 32}   panelLeft={PANEL_LEFT} panelRight={panelRightSvg} />
+
+        {/* Door stile label */}
+        <CadText
+          x={panelRightSvg - 8} y={56}
+          anchor="end" size={7} fill={C.blueDim} opacity={0.50}
+        >
+          DOOR STILE
+        </CadText>
+
+        {/* Hinge-edge rotated label */}
         <text
-          x={DOOR_LEFT - 6}
-          y={DOOR_TOP + DOOR_HEIGHT / 2}
+          x={PANEL_LEFT - 12}
+          y={VP_HEIGHT / 2}
           textAnchor="middle"
           dominantBaseline="middle"
           fontSize="7"
-          fontFamily="JetBrains Mono, monospace"
-          fill="rgba(0,180,216,0.5)"
-          transform={`rotate(-90, ${DOOR_LEFT - 6}, ${DOOR_TOP + DOOR_HEIGHT / 2})`}
+          fontFamily="JetBrains Mono, Fira Code, monospace"
+          fill={C.blueDim}
+          opacity="0.70"
+          transform={`rotate(-90, ${PANEL_LEFT - 12}, ${VP_HEIGHT / 2})`}
         >
-          HINGE SIDE EDGE →
+          ◄ HINGE SIDE EDGE
         </text>
 
-        {/* ── Thickness indicator (cross-section mini view) ── */}
-        <rect
-          x={DOOR_LEFT + svgDoorFaceWidth + 8}
-          y={DOOR_TOP + 10}
-          width={doorThickness * 0.9}
-          height={60}
-          fill="url(#woodHatch)"
-          stroke="rgba(0,180,216,0.3)"
-          strokeWidth="0.8"
+        {/* ════════════════════════════════════════════════════
+            LAYER 2 — Hinge geometry
+        ═══════════════════════════════════════════════════════ */}
+
+        {/* Vertical screw column center-line */}
+        <line
+          x1={screwXsvg} y1={0}
+          x2={screwXsvg} y2={VP_HEIGHT}
+          stroke={C.orangeDim} strokeWidth="0.65"
+          strokeDasharray="5 4" opacity="0.55"
         />
-        <text
-          x={DOOR_LEFT + svgDoorFaceWidth + 8 + (doorThickness * 0.45)}
-          y={DOOR_TOP + 75}
-          textAnchor="middle"
-          fontSize="7"
-          fontFamily="JetBrains Mono, monospace"
-          fill="rgba(0,180,216,0.6)"
+
+        {/* Cup center horizontal reference line */}
+        <line
+          x1={PANEL_LEFT - 8} y1={cupYsvg}
+          x2={panelRightSvg + 8} y2={cupYsvg}
+          stroke={C.blueDim} strokeWidth="0.55"
+          strokeDasharray="3 4" opacity="0.40"
+        />
+
+        {/* Faint connectors: cup center → each screw */}
+        <line
+          x1={cupXsvg} y1={cupYsvg}
+          x2={screwXsvg} y2={screwTopYsvg}
+          stroke={C.mutedFaint} strokeWidth="0.5"
+          strokeDasharray="2 4"
+        />
+        <line
+          x1={cupXsvg} y1={cupYsvg}
+          x2={screwXsvg} y2={screwBotYsvg}
+          stroke={C.mutedFaint} strokeWidth="0.5"
+          strokeDasharray="2 4"
+        />
+
+        {/* Screw holes — rendered BEFORE cup so cup sits on top */}
+        <ScrewHole cx={screwXsvg} cy={screwTopYsvg} />
+        <ScrewHole cx={screwXsvg} cy={screwBotYsvg} />
+
+        {/* Screw coordinate labels */}
+        <ScrewCoordLabel
+          cx={screwXsvg}
+          cy={screwTopYsvg}
+          screwX={screwX}
+          yOffset={screwTopYOffset}
+          isTop={true}
+        />
+        <ScrewCoordLabel
+          cx={screwXsvg}
+          cy={screwBotYsvg}
+          screwX={screwX}
+          yOffset={screwBottomYOffset}
+          isTop={false}
+        />
+
+        {/* Cup hole — topmost geometry layer */}
+        <CupHole
+          cx={cupXsvg}
+          cy={cupYsvg}
+          radius={cupRadius}
+          severity={severity}
+        />
+
+        {/* ════════════════════════════════════════════════════
+            LAYER 3 — Leaders / callouts
+        ═══════════════════════════════════════════════════════ */}
+
+        {/* Ø35mm cup leader */}
+        <LeaderLabel
+          fromX={cupXsvg + cupRadius * 0.72}
+          fromY={cupYsvg - cupRadius * 0.72}
+          toX={cupXsvg + cupRadius + 32}
+          toY={cupYsvg - cupRadius - 16}
+          label="Ø35mm"
+          sublabel="cup bore"
+          color={C.blue}
+        />
+
+        {/* Ø4mm screw leader — top screw only (avoids clutter) */}
+        <LeaderLabel
+          fromX={screwXsvg + 9}
+          fromY={screwTopYsvg - 6}
+          toX={screwXsvg + 30}
+          toY={screwTopYsvg - 20}
+          label="Ø4mm"
+          sublabel="pilot hole"
+          color={C.orange}
+        />
+
+        {/* ════════════════════════════════════════════════════
+            LAYER 4 — Dimension annotations
+        ═══════════════════════════════════════════════════════ */}
+        <DimAnnotations
+          panelLeftSvg={PANEL_LEFT}
+          cupXsvg={cupXsvg}
+          screwXsvg={screwXsvg}
+          screwTopYsvg={screwTopYsvg}
+          screwBotYsvg={screwBotYsvg}
+          cupCenterX={cupCenterX}
+          screwOffsetX={screwOffsetX}
+          holeSpacing={holeSpacing}
+          dimHRow1Y={DIM_H_ROW1_Y}
+          dimHRow2Y={DIM_H_ROW2_Y}
+          dimVX={DIM_V_X}
+        />
+
+        {/* ════════════════════════════════════════════════════
+            LAYER 5 — Peripheral info
+        ═══════════════════════════════════════════════════════ */}
+        <ThicknessCallout
+          x={panelRightSvg + 6}
+          y={14}
+          thickness={doorThickness}
+        />
+
+        <ScaleBar x={PANEL_LEFT} y={14} scale={SCALE} />
+
+        <CadText
+          x={VP_WIDTH - 6} y={VP_HEIGHT - 5}
+          anchor="end" size={6} fill={C.blue} opacity={0.12}
         >
-          {doorThickness}mm
-        </text>
-        <text
-          x={DOOR_LEFT + svgDoorFaceWidth + 8 + (doorThickness * 0.45)}
-          y={DOOR_TOP + 84}
-          textAnchor="middle"
-          fontSize="6"
-          fontFamily="JetBrains Mono, monospace"
-          fill="rgba(0,180,216,0.4)"
-        >
-          (thickness)
-        </text>
-
-        {/* ── HINGE INSTANCES (top + bottom) ──────────────── */}
-        {hingeInstances.map(({ id, ySvg, label }) => {
-          const cupY      = ySvg;
-          const screwY    = ySvg + svgScrewOffsetY;   // screws are BELOW cup center
-
-          return (
-            <g key={id}>
-              {/* ── Cup hole (35mm Forstner bore) ─────────── */}
-              <CrosshairMarker
-                cx={svgCupX}
-                cy={cupY}
-                radius={cupR}
-                color="#00b4d8"
-                pulseClass="cad-pulse"
-              />
-
-              {/* Cup fill to indicate bore depth visually */}
-              <circle
-                cx={svgCupX}
-                cy={cupY}
-                r={cupR}
-                fill="rgba(0,180,216,0.06)"
-              />
-
-              {/* ── Mounting screw holes ───────────────────── */}
-              {/* Left screw */}
-              <ScrewHole
-                cx={svgScrewLeftX}
-                cy={screwY}
-                color="#f97316"
-              />
-              {/* Right screw */}
-              <ScrewHole
-                cx={svgScrewRightX}
-                cy={screwY}
-                color="#f97316"
-              />
-
-              {/* ── Horizontal line connecting the 3 holes ── */}
-              {/* Cup-to-screw connection (diagonal, showing offset) */}
-              <line
-                x1={svgCupX}    y1={cupY}
-                x2={svgScrewLeftX}  y2={screwY}
-                stroke="rgba(249,115,22,0.3)" strokeWidth="0.6" strokeDasharray="3 2"
-              />
-              <line
-                x1={svgCupX}    y1={cupY}
-                x2={svgScrewRightX} y2={screwY}
-                stroke="rgba(249,115,22,0.3)" strokeWidth="0.6" strokeDasharray="3 2"
-              />
-
-              {/* ── Screw-to-screw horizontal line ─────────── */}
-              <line
-                x1={svgScrewLeftX}  y1={screwY}
-                x2={svgScrewRightX} y2={screwY}
-                stroke="rgba(249,115,22,0.2)" strokeWidth="0.5" strokeDasharray="4 3"
-              />
-
-              {/* ── Cup center label ────────────────────────── */}
-              <text
-                x={svgCupX}
-                y={cupY - cupR - 10}
-                textAnchor="middle"
-                fontSize="7"
-                fontFamily="JetBrains Mono, monospace"
-                fill="rgba(0,180,216,0.8)"
-              >
-                Ø35mm
-              </text>
-
-              {/* ── Vertical offset annotation ──────────────── */}
-              <line
-                x1={svgCupX + cupR + 5} y1={cupY}
-                x2={svgCupX + cupR + 5} y2={screwY}
-                stroke="rgba(249,115,22,0.5)" strokeWidth="0.6"
-              />
-              <text
-                x={svgCupX + cupR + 14}
-                y={(cupY + screwY) / 2}
-                dominantBaseline="middle"
-                fontSize="6.5"
-                fontFamily="JetBrains Mono, monospace"
-                fill="rgba(249,115,22,0.7)"
-              >
-                {screwOffsetY}mm↕
-              </text>
-
-              {/* ── Hinge instance label ────────────────────── */}
-              <text
-                x={DOOR_LEFT + svgDoorFaceWidth - 4}
-                y={cupY}
-                textAnchor="end"
-                dominantBaseline="middle"
-                fontSize="6.5"
-                fontFamily="JetBrains Mono, monospace"
-                fill="rgba(0,180,216,0.4)"
-              >
-                {label}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* ── DIMENSION LINES ────────────────────────────── */}
-        {/* Cup center X from door left edge */}
-        <DimLine
-          x1={DOOR_LEFT}
-          y1={DOOR_TOP + DOOR_HEIGHT + 16}
-          x2={svgCupX}
-          y2={DOOR_TOP + DOOR_HEIGHT + 16}
-          label={`${measurements.cupCenterX.toFixed(1)}mm`}
-          orient="h"
-          color="#00b4d8"
-        />
-
-        {/* Screw-to-screw spacing */}
-        <DimLine
-          x1={svgScrewLeftX}
-          y1={DOOR_TOP + DOOR_HEIGHT + 28}
-          x2={svgScrewRightX}
-          y2={DOOR_TOP + DOOR_HEIGHT + 28}
-          label={`${brandSpec.holeSpacing}mm`}
-          orient="h"
-          color="#f97316"
-        />
-
-        {/* ── Edge markers ────────────────────────────────── */}
-        {/* Left (hinge side) vertical edge tick */}
-        <line
-          x1={DOOR_LEFT} y1={DOOR_TOP + DOOR_HEIGHT + 6}
-          x2={DOOR_LEFT} y2={DOOR_TOP + DOOR_HEIGHT + 26}
-          stroke="rgba(0,180,216,0.4)" strokeWidth="0.8"
-        />
-        {/* Cup center vertical tick */}
-        <line
-          x1={svgCupX} y1={DOOR_TOP + DOOR_HEIGHT + 6}
-          x2={svgCupX} y2={DOOR_TOP + DOOR_HEIGHT + 36}
-          stroke="rgba(0,180,216,0.4)" strokeWidth="0.8"
-        />
-        {/* Left screw vertical tick */}
-        <line
-          x1={svgScrewLeftX} y1={DOOR_TOP + DOOR_HEIGHT + 6}
-          x2={svgScrewLeftX} y2={DOOR_TOP + DOOR_HEIGHT + 38}
-          stroke="rgba(249,115,22,0.4)" strokeWidth="0.8"
-        />
-        {/* Right screw vertical tick */}
-        <line
-          x1={svgScrewRightX} y1={DOOR_TOP + DOOR_HEIGHT + 6}
-          x2={svgScrewRightX} y2={DOOR_TOP + DOOR_HEIGHT + 38}
-          stroke="rgba(249,115,22,0.4)" strokeWidth="0.8"
-        />
-
-        {/* ── Brand watermark ─────────────────────────────── */}
-        <text
-          x={VP_WIDTH - 8}
-          y={VP_HEIGHT - 8}
-          textAnchor="end"
-          fontSize="7"
-          fontFamily="JetBrains Mono, monospace"
-          fill="rgba(0,180,216,0.15)"
-        >
-          HingeCalc v1.0 — {brandSpec.label}
-        </text>
-
-        {/* ── Scale indicator ──────────────────────────────── */}
-        <g>
-          <line
-            x1={DOOR_LEFT} y1={DOOR_TOP - 18}
-            x2={DOOR_LEFT + 10 * SCALE} y2={DOOR_TOP - 18}
-            stroke="rgba(0,180,216,0.5)" strokeWidth="1"
-          />
-          <line x1={DOOR_LEFT} y1={DOOR_TOP - 21} x2={DOOR_LEFT} y2={DOOR_TOP - 15}
-            stroke="rgba(0,180,216,0.5)" strokeWidth="0.8" />
-          <line x1={DOOR_LEFT + 10 * SCALE} y1={DOOR_TOP - 21}
-            x2={DOOR_LEFT + 10 * SCALE} y2={DOOR_TOP - 15}
-            stroke="rgba(0,180,216,0.5)" strokeWidth="0.8" />
-          <text
-            x={DOOR_LEFT + 5 * SCALE}
-            y={DOOR_TOP - 22}
-            textAnchor="middle"
-            fontSize="6.5"
-            fontFamily="JetBrains Mono, monospace"
-            fill="rgba(0,180,216,0.5)"
-          >
-            10mm
-          </text>
-        </g>
+          HingeCalc v1.1 — {brandSpec.label}
+        </CadText>
       </svg>
     </div>
   );

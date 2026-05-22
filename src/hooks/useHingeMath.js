@@ -1,35 +1,35 @@
 import { useMemo } from 'react';
 
 // ─────────────────────────────────────────────────────────────
-// BRAND CONSTANTS — Industrial Standards
+// BRAND CONSTANTS
 // ─────────────────────────────────────────────────────────────
 export const BRAND_SPECS = {
   blum: {
-    label:             'Blum (CLIP top)',
-    cupDiameter:       35,
-    holeSpacing:       45,    // mm — center-to-center between mount screws
-    screwOffsetY:      9.5,   // mm — vertical offset of screw line BELOW cup center
-    minEdgeDistance:   3,     // mm — absolute minimum from door edge to cup center
-    boreDepth:         13.5,  // mm — standard bore depth
-    plateThickness:    1.5,
+    label:           'Blum (CLIP top)',
+    cupDiameter:     35,
+    holeSpacing:     45,     // vertical distance between the two screw holes (Y-axis)
+    screwOffsetX:    9.5,    // horizontal offset: cup center → screw column (X-axis)
+    minEdgeDistance: 3,
+    boreDepth:       13.5,
+    plateThickness:  1.5,
   },
   hettich: {
-    label:             'Hettich (Intermat)',
-    cupDiameter:       35,
-    holeSpacing:       48,
-    screwOffsetY:      6,
-    minEdgeDistance:   3,
-    boreDepth:         13,
-    plateThickness:    1.6,
+    label:           'Hettich (Intermat)',
+    cupDiameter:     35,
+    holeSpacing:     48,
+    screwOffsetX:    6,
+    minEdgeDistance: 3,
+    boreDepth:       13,
+    plateThickness:  1.6,
   },
   generic: {
-    label:             'Generic / Universal',
-    cupDiameter:       35,
-    holeSpacing:       45,
-    screwOffsetY:      8,
-    minEdgeDistance:   3,
-    boreDepth:         13,
-    plateThickness:    1.5,
+    label:           'Generic / Universal',
+    cupDiameter:     35,
+    holeSpacing:     45,
+    screwOffsetX:    8,
+    minEdgeDistance: 3,
+    boreDepth:       13,
+    plateThickness:  1.5,
   },
 };
 
@@ -38,60 +38,48 @@ export const BRAND_SPECS = {
 // ─────────────────────────────────────────────────────────────
 export const OVERLAY_SPECS = {
   full: {
-    label:       'Full Overlay',
-    description: 'Door fully covers cabinet face frame',
-    // Cup center from door edge = (cupRadius) + edgeClearance + kAdjustment
-    // For full overlay: typically 37mm from door edge
-    baseEdgeOffset: 37,
+    label:          'Full Overlay',
+    description:    'Door fully covers cabinet face frame',
+    // How far the cabinet face frame sits FROM the hinge-side
+    // door edge when the door is closed.
+    // Full overlay: door extends 16mm past the face frame edge.
+    // Face frame reference line X = cupCenterX - 16 (from door edge)
+    cabinetFaceOffset: 16,
   },
   half: {
-    label:       'Half Overlay',
-    description: 'Door covers half of cabinet partition',
-    baseEdgeOffset: 28,
+    label:          'Half Overlay',
+    description:    'Door covers half of cabinet partition',
+    cabinetFaceOffset: 8,
   },
   inset: {
-    label:       'Inset (Flush)',
-    description: 'Door sits flush inside cabinet opening',
-    baseEdgeOffset: 22,
+    label:          'Inset (Flush)',
+    description:    'Door sits flush inside cabinet opening',
+    // For inset, the cabinet face frame is flush with door face.
+    // The door edge is recessed 2mm behind the face frame.
+    cabinetFaceOffset: -2,
   },
 };
 
 // ─────────────────────────────────────────────────────────────
-// INTERFERENCE / COLLISION DETECTION ENGINE
+// COLLISION DETECTION ENGINE
 // ─────────────────────────────────────────────────────────────
-
-/**
- * Analyzes door thickness against hinge geometry to detect
- * physical interference between the hinge cup and door edge.
- *
- * Physics model:
- *   Available depth = doorThickness - kValue
- *   Required depth  = boreDepth + plateThickness
- *   Interference    = requiredDepth > availableDepth
- *
- * @param {number} doorThickness  - mm
- * @param {number} kValue         - Tab (K-value) in mm
- * @param {object} brandSpec      - Brand spec object
- * @returns {{ warnings: string[], severity: 'ok'|'warn'|'critical', maxSafeK: number }}
- */
 function runCollisionDetection(doorThickness, kValue, brandSpec) {
-  const warnings = [];
-  let severity = 'ok';
-
-  const requiredDepth = brandSpec.boreDepth + brandSpec.plateThickness;
+  const warnings       = [];
+  let   severity       = 'ok';
+  const requiredDepth  = brandSpec.boreDepth + brandSpec.plateThickness;
   const availableDepth = doorThickness - kValue;
-  const deficit = requiredDepth - availableDepth;
+  const deficit        = requiredDepth - availableDepth;
 
-  // ── Thick door thresholds ──────────────────────────────────
   if (doorThickness >= 24) {
     severity = 'critical';
     warnings.push(
       '⛔ CRITICAL: Standard 35mm hinges will FAIL on doors ≥24mm thick. ' +
-      'Hinge cup bore (13.5mm) conflicts with door geometry at standard K-values. ' +
-      'Specify THICK-DOOR profile hinges (e.g., Blum CLIP top Thick Door, Hettich Intermat 9944).'
+      'The hinge cup bore conflicts with door geometry at standard K-values. ' +
+      'Specify THICK-DOOR profile hinges (e.g., Blum CLIP top Thick Door, ' +
+      'Hettich Intermat 9944).'
     );
   } else if (doorThickness >= 22) {
-    severity = severity === 'critical' ? 'critical' : 'warn';
+    severity = 'warn';
     warnings.push(
       '⚠ CLEARANCE WARNING: Doors ≥22mm thick risk hinge binding. ' +
       'Keep Tab (K-value) at minimum (3mm) or use profile hinges. ' +
@@ -99,156 +87,145 @@ function runCollisionDetection(doorThickness, kValue, brandSpec) {
     );
   }
 
-  // ── K-value vs depth interference ─────────────────────────
   if (deficit > 0) {
     severity = 'critical';
     warnings.push(
-      `⛔ GEOMETRY CONFLICT: At K=${kValue}mm on ${doorThickness}mm door, ` +
+      `⛔ GEOMETRY CONFLICT: At K=${kValue}mm on a ${doorThickness}mm door, ` +
       `the hinge requires ${requiredDepth.toFixed(1)}mm bore depth but only ` +
-      `${availableDepth.toFixed(1)}mm is available. Reduce K-value or increase door thickness.`
+      `${availableDepth.toFixed(1)}mm is available. ` +
+      `Reduce K-value or use a thicker door.`
     );
   }
 
-  // ── Minimum edge distance check ───────────────────────────
-  const cupCenterFromEdge = brandSpec.cupDiameter / 2 + brandSpec.minEdgeDistance;
   if (kValue < brandSpec.minEdgeDistance) {
-    severity = severity === 'critical' ? 'critical' : 'warn';
+    if (severity === 'ok') severity = 'warn';
     warnings.push(
-      `⚠ EDGE PROXIMITY: K-value of ${kValue}mm is below the recommended minimum ` +
-      `edge distance (${brandSpec.minEdgeDistance}mm). Risk of door edge splitting during bore.`
+      `⚠ EDGE PROXIMITY: K-value of ${kValue}mm is below the recommended ` +
+      `minimum (${brandSpec.minEdgeDistance}mm). ` +
+      `Risk of door edge splitting during bore.`
     );
   }
 
-  // ── Calculate maximum safe K for this door thickness ──────
-  const maxSafeK = Math.max(3, Math.min(7, doorThickness - requiredDepth));
-
-  // ── K restriction for thick doors ─────────────────────────
   if (doorThickness >= 22 && kValue > 4) {
-    severity = severity === 'critical' ? 'critical' : 'warn';
+    if (severity === 'ok') severity = 'warn';
     warnings.push(
       `⚠ K-VALUE RESTRICTION: For ${doorThickness}mm doors, ` +
-      `maximum recommended K-value is 4mm (you entered ${kValue}mm). ` +
-      `Exceeding this increases binding risk by ${((kValue - 4) * 12).toFixed(0)}%.`
+      `maximum recommended K-value is 4mm (entered: ${kValue}mm). ` +
+      `Exceeding this increases binding risk by ~${((kValue - 4) * 12).toFixed(0)}%.`
     );
   }
 
+  const maxSafeK = Math.max(3, Math.min(7, Math.floor(doorThickness - requiredDepth)));
   return { warnings, severity, maxSafeK };
 }
 
 // ─────────────────────────────────────────────────────────────
 // MAIN CALCULATION ENGINE
 // ─────────────────────────────────────────────────────────────
-
-/**
- * Computes all drill positions and metadata for a 35mm hinge installation.
- *
- * Coordinate system (all in mm, origin = top-left corner of door face):
- *   X = horizontal distance from door SIDE EDGE (the edge being hinged)
- *   Y = vertical distance from door TOP edge (changes per hinge position)
- *
- * For the cup hole:
- *   X_cup = overlaySpec.baseEdgeOffset + kValue
- *
- * For the two mounting screw holes (horizontally away from cup center):
- *   X_screwLeft  = X_cup - holeSpacing/2
- *   X_screwRight = X_cup + holeSpacing/2
- *   Y_screw      = Y_cup + screwOffsetY   (offset BELOW cup center line)
- *
- * Standard hinge positions from top of door:
- *   Top hinge:    100mm from top
- *   Bottom hinge: 100mm from bottom (represented as negative offset)
- *   Middle hinge: geometric center (only shown when door > 1200mm)
- */
 function calculatePositions(brand, overlayType, doorThickness, kValue) {
-  const brandSpec   = BRAND_SPECS[brand]   ?? BRAND_SPECS.generic;
+  const brandSpec   = BRAND_SPECS[brand]        ?? BRAND_SPECS.generic;
   const overlaySpec = OVERLAY_SPECS[overlayType] ?? OVERLAY_SPECS.full;
 
-  // ── Cup hole X position from hinge-side edge ───────────────
-  const cupCenterX = overlaySpec.baseEdgeOffset + kValue;
+  // ── Cup center X ───────────────────────────────────────────
+  // Physical rule: cup center must clear the door edge by
+  // exactly (cup radius + K-value). Overlay type does NOT
+  // affect the bore position on the door face — it only
+  // determines the cabinet-side arm setting.
+  //
+  //   cupCenterX = (cupDiameter / 2) + kValue
+  //   e.g. 35mm cup, K=5: 17.5 + 5 = 22.5mm ✓
+  //
+  const cupCenterX = (brandSpec.cupDiameter / 2) + kValue;
 
-  // ── Mounting screw positions (horizontal from cup center) ──
-  const screwLeftX  = cupCenterX - brandSpec.holeSpacing / 2;
-  const screwRightX = cupCenterX + brandSpec.holeSpacing / 2;
+  // ── Screw column X ─────────────────────────────────────────
+  // The mounting flange sits deeper into the panel than the cup.
+  // screwOffsetX is the horizontal distance from cup center
+  // to the vertical screw center-line.
+  const screwX = cupCenterX + brandSpec.screwOffsetX;
 
-  // ── Vertical offset of screw holes from cup center line ────
-  //    Screws are BELOW the cup center (toward door interior)
-  const screwOffsetY = brandSpec.screwOffsetY;
+  // ── Screw Y offsets from cup center row ────────────────────
+  // Both offsets are relative to cupCenterY (which varies per
+  // hinge instance but is abstracted as 0 here).
+  // Negative = above cup center, Positive = below cup center.
+  const screwHalfSpacing   = brandSpec.holeSpacing / 2;
+  const screwTopYOffset    = -screwHalfSpacing;   // e.g. -22.5mm for Blum
+  const screwBottomYOffset = +screwHalfSpacing;   // e.g. +22.5mm for Blum
 
-  // ── Standard vertical positions (from top of door) ─────────
-  const hingePositions = [
-    { id: 'top',    yFromTop: 100,  label: 'Top Hinge',    note: '100mm from top edge' },
-    { id: 'bottom', yFromTop: null, label: 'Bottom Hinge', note: '100mm from bottom edge' },
-  ];
+  // ── Overlay / cabinet face reference ───────────────────────
+  // cabinetFaceOffset: how far the cabinet face frame sits
+  // from the hinge-side door edge when door is closed.
+  // Used by Blueprint to draw the reference line.
+  const cabinetFaceOffset = overlaySpec.cabinetFaceOffset;
 
-  // ── Effective overlap / reveal ─────────────────────────────
-  //    How much the door overlaps the cabinet face
-  let overlayAmount;
-  switch (overlayType) {
-    case 'full':  overlayAmount = 16; break;   // full overlay (one door side)
-    case 'half':  overlayAmount = 8;  break;   // half partition
-    case 'inset': overlayAmount = -2; break;   // inset (door is narrower than opening)
-    default:      overlayAmount = 16;
-  }
+  // The X position of the cabinet face frame relative to
+  // the door's hinge edge:
+  //   cabinetFaceX = cupCenterX - cabinetFaceOffset
+  // (frame sits "behind" the door overlap)
+  const cabinetFaceX = cupCenterX - cabinetFaceOffset;
 
-  // ── Bore details ───────────────────────────────────────────
+  // ── Bore depth analysis ────────────────────────────────────
   const boreDepth      = brandSpec.boreDepth;
   const remainingWood  = doorThickness - boreDepth;
+  const depthRequired  = boreDepth + brandSpec.plateThickness;
+  const depthAvailable = doorThickness - kValue;
 
-  // ── Quality checks ─────────────────────────────────────────
+  // ── Standard hinge row positions ──────────────────────────
+  const topHingeY    = 100;
+  const bottomOffset = 100;
+
+  // ── Collision detection ────────────────────────────────────
   const collision = runCollisionDetection(doorThickness, kValue, brandSpec);
 
+  // ── Overlay amount for display ─────────────────────────────
+  const overlayAmount = cabinetFaceOffset;
+
   return {
-    // Core measurements
+    // ── Cup hole ─────────────────────────────────────────────
     cupCenterX,
-    screwLeftX,
-    screwRightX,
-    screwOffsetY,
-    holeSpacing:    brandSpec.holeSpacing,
-    cupDiameter:    brandSpec.cupDiameter,
+    cupDiameter:   brandSpec.cupDiameter,
     boreDepth,
-    remainingWood,
+
+    // ── Screw holes — explicitly named for data consumers ────
+    screwX,               // X from hinge edge to screw center-line
+    screwTopYOffset,      // Y offset from cup center → top screw (negative = above)
+    screwBottomYOffset,   // Y offset from cup center → bottom screw (positive = below)
+    holeSpacing:     brandSpec.holeSpacing,   // vertical distance top↔bottom screw
+    screwOffsetX:    brandSpec.screwOffsetX,  // horizontal cup→screw distance
+
+    // ── Overlay / cabinet reference ───────────────────────────
+    overlayType,
     overlayAmount,
+    cabinetFaceOffset,
+    cabinetFaceX,         // SVG: where to draw the cabinet face reference line
 
-    // Hinge row positions
-    hingePositions,
-    topHingeY:    100,
-    bottomOffset: 100,   // from bottom edge
+    // ── Hinge row positions ───────────────────────────────────
+    topHingeY,
+    bottomOffset,
 
-    // Brand metadata
+    // ── Material analysis ─────────────────────────────────────
+    remainingWood,
+    depthRequired,
+    depthAvailable,
+
+    // ── Metadata ──────────────────────────────────────────────
     brandSpec,
     overlaySpec,
-    brandKey:     brand,
-    overlayKey:   overlayType,
+    brandKey:      brand,
+    overlayKey:    overlayType,
     doorThickness,
     kValue,
 
-    // Collision analysis
-    warnings:    collision.warnings,
-    severity:    collision.severity,
-    maxSafeK:    collision.maxSafeK,
-
-    // Derived safety metrics
+    // ── Collision results ─────────────────────────────────────
+    warnings:       collision.warnings,
+    severity:       collision.severity,
+    maxSafeK:       collision.maxSafeK,
     isGeometrySafe: collision.severity === 'ok',
-    depthAvailable: doorThickness - kValue,
-    depthRequired:  boreDepth + brandSpec.plateThickness,
   };
 }
 
 // ─────────────────────────────────────────────────────────────
 // CUSTOM HOOK
 // ─────────────────────────────────────────────────────────────
-
-/**
- * useHingeMath — Core calculation hook
- *
- * @param {object} params
- * @param {string} params.brand          - 'blum' | 'hettich' | 'generic'
- * @param {string} params.overlayType    - 'full' | 'half' | 'inset'
- * @param {number} params.doorThickness  - mm (16–26)
- * @param {number} params.kValue         - mm (3–7)
- *
- * @returns {object} Complete measurement set + warnings
- */
 export function useHingeMath({ brand, overlayType, doorThickness, kValue }) {
   return useMemo(
     () => calculatePositions(brand, overlayType, doorThickness, kValue),
@@ -256,5 +233,4 @@ export function useHingeMath({ brand, overlayType, doorThickness, kValue }) {
   );
 }
 
-// Named export of raw calculator for use outside React
 export { calculatePositions };

@@ -304,11 +304,12 @@ export default function Calculator({ defaultBrand = 'blum', defaultOverlay = 'fu
       <div className="max-w-5xl mx-auto px-4 py-8">
 
         {/* ── Quick stats bar ─────────────────────────────── */}
+        {/* CORRECTED: screwOffsetY → screwOffsetX (current key name in math engine) */}
         <div className="flex flex-wrap gap-2 mb-8">
-          <StatCard label="Cup Center X"  value={measurements.cupCenterX}  unit="mm" color="blue"   />
-          <StatCard label="Bore Depth"    value={measurements.boreDepth}    unit="mm" color="orange" />
-          <StatCard label="Screw Spacing" value={measurements.holeSpacing}  unit="mm" color="blue"   />
-          <StatCard label="Screw Offset"  value={measurements.screwOffsetY} unit="mm" color="orange" />
+          <StatCard label="Cup Center X"   value={measurements.cupCenterX}   unit="mm" color="blue"   />
+          <StatCard label="Bore Depth"     value={measurements.boreDepth}     unit="mm" color="orange" />
+          <StatCard label="Screw Spacing"  value={measurements.holeSpacing}   unit="mm" color="blue"   />
+          <StatCard label="Screw Offset X" value={measurements.screwOffsetX}  unit="mm" color="orange" /> {/* ← fixed: matches returned key */}
           <StatCard label="Remaining Wood" value={measurements.remainingWood} unit="mm"
             color={measurements.remainingWood < 4 ? 'orange' : 'green'}
           />
@@ -362,7 +363,7 @@ export default function Calculator({ defaultBrand = 'blum', defaultOverlay = 'fu
                   ">
                     <span>Cup Ø: <span className="text-cad-blue">{BRAND_SPECS[brand]?.cupDiameter}mm</span></span>
                     <span>Hole Spacing: <span className="text-cad-orange">{BRAND_SPECS[brand]?.holeSpacing}mm</span></span>
-                    <span>Screw Offset: <span className="text-cad-blue">{BRAND_SPECS[brand]?.screwOffsetY}mm</span></span>
+                    <span>Screw Offset: <span className="text-cad-blue">{BRAND_SPECS[brand]?.screwOffsetX}mm</span></span>  {/* ← FIX: matches BRAND_SPECS key */}
                     <span>Bore Depth: <span className="text-cad-orange">{BRAND_SPECS[brand]?.boreDepth}mm</span></span>
                   </div>
                 </FieldGroup>
@@ -400,8 +401,14 @@ export default function Calculator({ defaultBrand = 'blum', defaultOverlay = 'fu
                   <p className="text-[10px] text-cad-muted/60 mt-1.5 font-mono">
                     {OVERLAY_SPECS[overlayType]?.description}
                     {' — '}
-                    Base edge offset: <span className="text-cad-blue">
-                      {OVERLAY_SPECS[overlayType]?.baseEdgeOffset}mm
+                    Cabinet face offset:{' '}
+                    <span className="text-cad-blue">
+                      {OVERLAY_SPECS[overlayType]?.cabinetFaceOffset}mm
+                    </span>
+                    {' / '}
+                    Reveal:{' '}
+                    <span className="text-cad-orange">
+                      {measurements.overlayAmount}mm
                     </span>
                   </p>
                 </FieldGroup>
@@ -572,29 +579,45 @@ export default function Calculator({ defaultBrand = 'blum', defaultOverlay = 'fu
                 <div className="text-[9px] text-cad-orange/60 font-mono uppercase tracking-widest px-1 pb-1 pt-3">
                   ── Mounting Screw Holes (4mm Pilot Bit) ──
                 </div>
+
+                {/* Screw column X — from hinge edge */}
                 <ResultRow
-                  label="Left Screw — from Hinge Edge (X)"
-                  value={measurements.screwLeftX}
+                  label="Screw Column — Horizontal from Hinge Edge (X)"
+                  value={measurements.screwX}
                   accent="orange"
-                  note="Left screw center, horizontal from edge"
+                  note={`screwX = cupCenter (${measurements.cupCenterX.toFixed(1)}mm) + offset (${measurements.screwOffsetX}mm)`}
                 />
+
+                {/* Top screw Y offset from cup center */}
                 <ResultRow
-                  label="Right Screw — from Hinge Edge (X)"
-                  value={measurements.screwRightX}
+                  label="Top Screw — Vertical Offset from Cup Center (−Y)"
+                  value={Math.abs(measurements.screwTopYOffset)}
                   accent="orange"
-                  note="Right screw center, horizontal from edge"
+                  note={`Above cup center — ${Math.abs(measurements.screwTopYOffset).toFixed(1)}mm upward`}
                 />
+
+                {/* Bottom screw Y offset from cup center */}
                 <ResultRow
-                  label="Screw-to-Screw Spacing"
+                  label="Bottom Screw — Vertical Offset from Cup Center (+Y)"
+                  value={Math.abs(measurements.screwBottomYOffset)}
+                  accent="orange"
+                  note={`Below cup center — ${Math.abs(measurements.screwBottomYOffset).toFixed(1)}mm downward`}
+                />
+
+                {/* Total screw-to-screw spacing */}
+                <ResultRow
+                  label="Screw-to-Screw Vertical Spacing"
                   value={measurements.holeSpacing}
                   accent="orange"
-                  note={`${measurements.brandSpec.label} standard spacing`}
+                  note={`${measurements.brandSpec.label} standard — top screw to bottom screw`}
                 />
+
+                {/* Horizontal offset (cup → screw column) */}
                 <ResultRow
-                  label="Vertical Offset — Screws Below Cup (ΔY)"
-                  value={measurements.screwOffsetY}
+                  label="Screw Horizontal Offset from Cup Center (X)"
+                  value={measurements.screwOffsetX}
                   accent="orange"
-                  note="Screw center line is BELOW cup center line"
+                  note="Cup center → screw column center-line (deeper into panel)"
                 />
 
                 {/* Hinge positions */}
